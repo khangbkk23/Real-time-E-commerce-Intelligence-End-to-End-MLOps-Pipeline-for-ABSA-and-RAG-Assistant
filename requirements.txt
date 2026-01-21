@@ -1,0 +1,3 @@
+pandas
+curl_cffi
+opencv-python-headless
