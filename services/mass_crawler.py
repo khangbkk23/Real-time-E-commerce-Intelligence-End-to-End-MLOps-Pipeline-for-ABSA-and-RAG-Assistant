@@ -73,37 +73,43 @@ class ShopeeMassCrawler:
             # print(f"Debug Next Error: {e}")
             return False
 
-    # ---------------------------------------------------
-    # HÀM LƯU FILE CSV
-    # ---------------------------------------------------
     def save_current_batch(self):
         if not self.full_data: 
-            print("⚠️ Chưa có dữ liệu mới để lưu.")
+            print("There isn't any new to save.")
             return
 
         try:
-            print(f"\n💾 ĐANG LƯU DATA CHO: {self.current_keyword.upper()}...")
+            print(f"\nSAVING DATA FOR: {self.current_keyword.upper()}...")
             df = pd.DataFrame(self.full_data)
+            if 'source_url' not in df.columns:
+                df['source_url'] = "Unknown"
+
             df = df.drop_duplicates(subset=['username', 'comment', 'timestamp'])
-            # Chỉ lấy comment > 10 ký tự
             df = df[df['comment'].str.len() > 10]
             
+            output_folder = "./dataset/raw"
+            
+            if not os.path.exists(output_folder):
+                os.makedirs(output_folder)
+            
             safe_keyword = self.current_keyword.replace(' ', '_')
-            filename = f"dataset_{safe_keyword}_{int(time.time())}.csv"
+            file_name_only = f"dataset_{safe_keyword}_{int(time.time())}.csv"
+            full_path = os.path.join(output_folder, file_name_only)
             
-            df.to_csv(filename, index=False, encoding='utf-8-sig')
+            cols = ['keyword', 'source_url', 'rating', 'date', 'variant', 'comment', 'username', 'timestamp']
+            cols = [c for c in cols if c in df.columns]
+            df = df[cols]
             
-            print(f"✅ ĐÃ LƯU: {filename}")
-            print(f"📊 Số dòng: {len(df)}")
+            df.to_csv(full_path, index=False, encoding='utf-8-sig')
+            
+            print(f"SAVED: {full_path}")
+            print(f"Number of rows: {len(df)}")
             
             self.full_data = [] 
             
         except Exception as e:
-            print(f"❌ Lỗi lưu file: {e}")
+            print(f"Error in saving file: {e}")
 
-    # ---------------------------------------------------
-    # HELPERS
-    # ---------------------------------------------------
     def human_like_delay(self, min_sec=2, max_sec=5):
         time.sleep(random.uniform(min_sec, max_sec))
 
@@ -172,8 +178,6 @@ class ShopeeMassCrawler:
 
         self.human_like_delay(4, 6)
         self.check_captcha_safe()
-
-        # Click Tab Đánh Giá
         self.driver.execute_script("window.scrollBy(0, 500);")
         try:
             self.driver.execute_script("""
@@ -187,12 +191,11 @@ class ShopeeMassCrawler:
         
         page = 1
         count_total = 0
-        empty_page_count = 0 # Đếm số trang không có dữ liệu liên tiếp
+        empty_page_count = 0
         
         while True:
-            # 1. Giới hạn cứng số trang
             if page > MAX_PAGES_PER_PROD:
-                print(f"      🛑 Dừng (Max {MAX_PAGES_PER_PROD} trang).")
+                print(f"Dừng (Max {MAX_PAGES_PER_PROD} trang).")
                 break
 
             # 2. Scroll trigger
@@ -265,16 +268,14 @@ class ShopeeMassCrawler:
         print(f"✅ Tìm thấy {len(unique_links)} sản phẩm.")
         return unique_links
 
-    # ---------------------------------------------------
-    # CHẠY CHIẾN DỊCH
-    # ---------------------------------------------------
+
     def run_multi_campaign(self, categories):
-        print(f"🚀 BẮT ĐẦU CHIẾN DỊCH: {len(categories)} DANH MỤC")
+        print(f"BẮT ĐẦU: {len(categories)} DANH MỤC")
         
         try:
             for idx, cat in enumerate(categories):
                 print(f"\n\n" + "#"*50)
-                print(f"📌 DANH MỤC [{idx+1}/{len(categories)}]: {cat.upper()}")
+                print(f"DANH MỤC [{idx+1}/{len(categories)}]: {cat.upper()}")
                 print("#"*50)
                 
                 self.current_keyword = cat
@@ -289,15 +290,14 @@ class ShopeeMassCrawler:
                     
                     self.human_like_delay(6, 10)
 
-                # Xong 1 danh mục -> Lưu file
                 self.save_current_batch()
-                print("💤 Nghỉ 30s...")
+                print("Nghỉ 30s...")
                 time.sleep(30)
 
         except KeyboardInterrupt:
             print("\n\n" + "!"*50)
-            print("🛑 NGƯỜI DÙNG DỪNG (Ctrl + C)!")
-            print("🛑 Đang lưu dữ liệu...")
+            print("NGƯỜI DÙNG DỪNG (Ctrl + C)!")
+            print("Đang lưu dữ liệu...")
             self.save_current_batch()
             print("!"*50)
 
@@ -306,16 +306,18 @@ class ShopeeMassCrawler:
             self.driver.quit()
         except: pass
 
-# ---------------------------------------------------
-# DANH SÁCH MẶT HÀNG HIGH-VALUE RESEARCH
-# ---------------------------------------------------
 SHOPPING_LIST = [
     # Công nghệ
     # "robot hút bụi lau nhà", 
-    "đồng hồ thông minh thể thao", "bàn phím cơ custom", 
-    "tai nghe chống ồn", "camera wifi ngoài trời", "màn hình đồ họa",
+    # "đồng hồ thông minh thể thao",
+    "bàn phím cơ custom", 
+    "tai nghe chống ồn",
+    "camera wifi ngoài trời",
+    "màn hình đồ họa",
     # Mỹ phẩm
-    "serum vitamin c", "kem dưỡng retinol", "kem chống nắng cho da dầu", 
+    "serum vitamin c",
+    "kem dưỡng retinol",
+    "kem chống nắng cho da dầu", 
     "nước tẩy trang cho da nhạy cảm",
     # Gia dụng
     "máy lọc không khí", "máy tăm nước", "ghế công thái học", 
@@ -327,6 +329,6 @@ if __name__ == "__main__":
     try:
         crawler.run_multi_campaign(SHOPPING_LIST)
     except Exception as e:
-        print(f"❌ Critical System Error: {e}")
+        print(f"Critical System Error: {e}")
     finally:
         crawler.close()

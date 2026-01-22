@@ -94,7 +94,7 @@ def map_sentiment(rating):
         return 2
 
 if __name__ == "__main__":
-    input_dir = "datasets"
+    input_dir = "datasets/raw"
     output_dir = "datasets/preprocessed"
 
     if not os.path.exists(output_dir):

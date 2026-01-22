@@ -1,5 +1,5 @@
 import torch
-import torch.nn
+import torch.nn as nn
 from transformers import AutoModel, AutoTokenizer
 from typing import Dict, Optional
 
