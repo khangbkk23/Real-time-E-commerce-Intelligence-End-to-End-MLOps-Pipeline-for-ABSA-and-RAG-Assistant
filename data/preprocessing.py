@@ -35,7 +35,7 @@ def tokenize(strings):
     except:
         return strings
 
-def load_stopwords(filepath='vietnamese-stopwords.txt'):
+def load_stopwords(filepath='./data/vietnamese-stopwords.txt'):
     stopwords = set()
     try:
         with codecs.open(filepath, 'r', encoding='utf-8') as file:
@@ -67,7 +67,7 @@ def normalize_teencode(text):
         "feedback": "đánh giá", "fb": "facebook",
         "sz": "size", "kđ": "không đều", "nt": "như thế",
         "m": "mình", "mik": "mình", "b": "bạn",
-        "trc": "trước", "ntn": "như thế này"
+        "trc": "trước", "ntn": "như thế này", "ok" : "tốt", "oki" : "tốt", "oke" : "tốt"
     }
     words = text.split()
     return " ".join([teencode_dict.get(w, w) for w in words])
@@ -94,42 +94,57 @@ def map_sentiment(rating):
         return 2
 
 if __name__ == "__main__":
-    input_file = "datasets/dataset_robot_hút_bụi_lau_nhà_1769048720.csv"
-    
+    input_dir = "datasets"
     output_dir = "datasets/preprocessed"
+
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         print(f"Created directory: {output_dir}")
 
-    try:
-        print("Loading data...")
-        df = pd.read_csv(input_file)
-        print(f"Original size: {len(df)} rows")
+    csv_files = [
+        f for f in os.listdir(input_dir)
+        if f.endswith(".csv") and os.path.isfile(os.path.join(input_dir, f))
+    ]
 
-        print("Processing text...")
-        df['clean_comment'] = df['comment'].apply(full_preprocessing)
+    if not csv_files:
+        print("Không tìm thấy file CSV nào trong thư mục datasets")
+        exit()
 
-        print("Mapping labels...")
-        df['label'] = df['rating'].apply(map_sentiment)
+    print(f"Found {len(csv_files)} CSV files")
 
-        initial_count = len(df)
-        df = df[df['clean_comment'].str.split().str.len() > 3]
-        print(f"Removed {initial_count - len(df)} empty/short rows.")
+    for file_name in csv_files:
+        input_file = os.path.join(input_dir, file_name)
+        print(f"\nProcessing: {file_name}")
 
-        base_name = os.path.basename(input_file)
-        output_file = os.path.join(output_dir, f"clean_{base_name}")
-        
-        final_columns = ['clean_comment', 'label', 'comment', 'rating', 'source_url', 'keyword', 'date']
-        
-        available_cols = [c for c in final_columns if c in df.columns]
-        df[available_cols].to_csv(output_file, index=False, encoding='utf-8-sig')
+        try:
+            df = pd.read_csv(input_file)
+            print(f"Original size: {len(df)} rows")
 
-        print("PREPROCESSING COMPLETED SUCCESSFULY!")
-        print(f"Saved to: {output_file}")
-        
-        print(df[['clean_comment', 'label']].head(5))
+            df['clean_comment'] = df['comment'].apply(full_preprocessing)
+            df['label'] = df['rating'].apply(map_sentiment)
 
-    except FileNotFoundError:
-        print(f"❌ Error: Cannot find file '{input_file}'")
-    except Exception as e:
-        print(f"❌ Error: {e}")
+            before = len(df)
+            df = df[df['clean_comment'].str.split().str.len() > 3]
+            print(f"Removed {before - len(df)} short/empty rows")
+
+            output_file = os.path.join(output_dir, f"clean_{file_name}")
+
+            final_columns = [
+                'clean_comment', 'label',
+                'comment', 'rating',
+                'source_url', 'keyword', 'date'
+            ]
+            available_cols = [c for c in final_columns if c in df.columns]
+
+            df[available_cols].to_csv(
+                output_file,
+                index=False,
+                encoding='utf-8-sig'
+            )
+
+            print(f"Saved: {output_file}")
+
+        except Exception as e:
+            print(f"Error processing {file_name}: {e}")
+
+    print("\nALL DATASETS PREPROCESSED SUCCESSFULLY!")
