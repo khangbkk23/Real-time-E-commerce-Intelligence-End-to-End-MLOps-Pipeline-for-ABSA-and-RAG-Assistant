@@ -87,7 +87,7 @@ class ShopeeMassCrawler:
             df = df.drop_duplicates(subset=['username', 'comment', 'timestamp'])
             df = df[df['comment'].str.len() > 10]
             
-            output_folder = "./dataset/raw"
+            output_folder = "./datasets/raw"
             
             if not os.path.exists(output_folder):
                 os.makedirs(output_folder)
@@ -310,18 +310,18 @@ SHOPPING_LIST = [
     # Công nghệ
     # "robot hút bụi lau nhà", 
     # "đồng hồ thông minh thể thao",
-    "bàn phím cơ custom", 
-    "tai nghe chống ồn",
-    "camera wifi ngoài trời",
-    "màn hình đồ họa",
-    # Mỹ phẩm
-    "serum vitamin c",
-    "kem dưỡng retinol",
-    "kem chống nắng cho da dầu", 
-    "nước tẩy trang cho da nhạy cảm",
-    # Gia dụng
-    "máy lọc không khí", "máy tăm nước", "ghế công thái học", 
-    "bàn chải điện", "nồi chiên không dầu"
+    # "bàn phím cơ custom", 
+    # "tai nghe chống ồn",
+    # "camera wifi ngoài trời",
+    "màn hình chuyên đồ hoạ",
+    # # Mỹ phẩm
+    # "serum vitamin c",
+    # "kem dưỡng retinol",
+    # "kem chống nắng cho da dầu", 
+    # "nước tẩy trang cho da nhạy cảm",
+    # # Gia dụng
+    # "máy lọc không khí", "máy tăm nước", "ghế công thái học", 
+    # "bàn chải điện", "nồi chiên không dầu"
 ]
 
 if __name__ == "__main__":
