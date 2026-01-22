@@ -4,3 +4,5 @@ opencv-python-headless
 undetected_chromedriver
 underthesea
 emoji
+imbalanced-learn
+pyyaml
