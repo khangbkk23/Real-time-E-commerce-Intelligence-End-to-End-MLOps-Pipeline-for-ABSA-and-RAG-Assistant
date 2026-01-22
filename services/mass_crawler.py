@@ -51,7 +51,7 @@ class ShopeeMassCrawler:
             next_disabled_xpath = "//button[contains(@class, 'shopee-icon-button--right') and contains(@class, 'disabled')]"
 
             if self.driver.find_elements(By.XPATH, next_disabled_xpath):
-                print("      🚫 Nút Next bị khóa (Đã hết trang).")
+                print("Nút Next bị khóa (Đã hết trang).")
                 return False
 
             # Tìm nút Next đang hoạt động
@@ -311,7 +311,8 @@ class ShopeeMassCrawler:
 # ---------------------------------------------------
 SHOPPING_LIST = [
     # Công nghệ
-    "robot hút bụi lau nhà", "đồng hồ thông minh garmin", "bàn phím cơ custom", 
+    # "robot hút bụi lau nhà", 
+    "đồng hồ thông minh thể thao", "bàn phím cơ custom", 
     "tai nghe chống ồn", "camera wifi ngoài trời", "màn hình đồ họa",
     # Mỹ phẩm
     "serum vitamin c", "kem dưỡng retinol", "kem chống nắng cho da dầu", 

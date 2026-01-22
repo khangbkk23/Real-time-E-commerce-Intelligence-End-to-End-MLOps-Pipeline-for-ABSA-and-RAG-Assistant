@@ -2,3 +2,5 @@ pandas
 curl_cffi
 opencv-python-headless
 undetected_chromedriver
+underthesea
+emoji
