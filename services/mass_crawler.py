@@ -10,9 +10,9 @@ import sys
 import os
 
 # --- CẤU HÌNH ---
-PROFILE_PATH = "/home/dikhang_hcmut/myshopee_profile"
-MAX_PRODUCTS_PER_CAT = 10     # Lấy Top 10 sản phẩm bán chạy nhất mỗi loại
-MAX_PAGES_PER_PROD = 50       # Cố gắng lấy tới 50 trang (khoảng 2500 review/sp)
+PROFILE_PATH = "./myshopee_profile_data"
+MAX_PRODUCTS_PER_CAT = 10
+MAX_PAGES_PER_PROD = 50
 
 class ShopeeMassCrawler:
     def __init__(self, headless=False):
@@ -20,54 +20,57 @@ class ShopeeMassCrawler:
         options.add_argument(f"--user-data-dir={PROFILE_PATH}")
         options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
         options.add_argument('--disable-blink-features=AutomationControlled')
-        # Tắt hình ảnh để load nhanh
         options.add_argument('--blink-settings=imagesEnabled=false')
         
+        # Thêm timeout để tránh lỗi Read timed out
+        options.add_argument("--dns-prefetch-disable")
+        options.add_argument("--disable-gpu")
+
         if headless:
             options.add_argument('--headless=new')
         
-        print("🚀 KHOỞI ĐỘNG CRAWLER VỚI TÍNH NĂNG AUTO-SAVE...")
+        print("🚀 KHOỞI ĐỘNG CRAWLER (STABLE VERSION)...")
         self.driver = uc.Chrome(options=options, headless=headless, use_subprocess=True)
         self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        
+        # [FIX] Set timeout cho việc load trang (30 giây)
+        self.driver.set_page_load_timeout(30)
         
         self.full_data = [] 
         self.current_keyword = ""
 
     # ---------------------------------------------------
-    # HÀM CLICK NEXT PAGE (FIX LỖI KHÔNG CHUYỂN TRANG)
+    # HÀM CLICK NEXT PAGE
     # ---------------------------------------------------
     def try_click_next_page(self):
         try:
-            # 1. Cuộn xuống đáy để load pagination
             self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight - 1200);")
             time.sleep(1)
+            
+            next_active_xpath = "//button[contains(@class, 'shopee-icon-button--right') and not(contains(@class, 'disabled'))]"
+            next_disabled_xpath = "//button[contains(@class, 'shopee-icon-button--right') and contains(@class, 'disabled')]"
 
-            # 2. Tìm nút Next (Mũi tên phải)
-            next_buttons_xpaths = [
-                "//button[contains(@class, 'shopee-icon-button--right')]", 
-                "//button[@class='shopee-icon-button shopee-icon-button--right']"
-            ]
-
-            target_btn = None
-            for xpath in next_buttons_xpaths:
-                try:
-                    btns = self.driver.find_elements(By.XPATH, xpath)
-                    for btn in btns:
-                        # Kiểm tra nút có hiển thị và không bị disabled (mờ đi)
-                        if btn.is_displayed() and btn.is_enabled():
-                            target_btn = btn
-                            break
-                    if target_btn: break
-                except: continue
-
-            if target_btn:
-                # 3. Dùng JavaScript Click (Xuyên vật cản)
-                self.driver.execute_script("arguments[0].click();", target_btn)
-                return True
-            else:
+            if self.driver.find_elements(By.XPATH, next_disabled_xpath):
+                print("      🚫 Nút Next bị khóa (Đã hết trang).")
                 return False
 
-        except Exception:
+            # Tìm nút Next đang hoạt động
+            btns = self.driver.find_elements(By.XPATH, next_active_xpath)
+            target_btn = None
+            
+            for btn in btns:
+                if btn.is_displayed() and btn.is_enabled():
+                    target_btn = btn
+                    break
+            
+            if target_btn:
+                self.driver.execute_script("arguments[0].click();", target_btn)
+                return True
+            
+            return False
+
+        except Exception as e:
+            # print(f"Debug Next Error: {e}")
             return False
 
     # ---------------------------------------------------
@@ -79,67 +82,53 @@ class ShopeeMassCrawler:
             return
 
         try:
-            print(f"\n💾 ĐANG LƯU DỮ LIỆU CHO: {self.current_keyword.upper()}...")
+            print(f"\n💾 ĐANG LƯU DATA CHO: {self.current_keyword.upper()}...")
             df = pd.DataFrame(self.full_data)
-            # Lọc trùng
             df = df.drop_duplicates(subset=['username', 'comment', 'timestamp'])
-            # Chỉ lấy comment có nội dung > 5 ký tự
-            df = df[df['comment'].str.len() > 5]
+            # Chỉ lấy comment > 10 ký tự
+            df = df[df['comment'].str.len() > 10]
             
-            # Tên file theo từ khóa + timestamp để không bị ghi đè
             safe_keyword = self.current_keyword.replace(' ', '_')
             filename = f"dataset_{safe_keyword}_{int(time.time())}.csv"
             
             df.to_csv(filename, index=False, encoding='utf-8-sig')
             
-            print(f"✅ ĐÃ LƯU THÀNH CÔNG: {filename}")
-            print(f"📊 Tổng số dòng: {len(df)}")
+            print(f"✅ ĐÃ LƯU: {filename}")
+            print(f"📊 Số dòng: {len(df)}")
             
-            # Reset buffer sau khi lưu xong
             self.full_data = [] 
             
         except Exception as e:
             print(f"❌ Lỗi lưu file: {e}")
 
     # ---------------------------------------------------
-    # HUMAN CHECK & CAPTCHA
+    # HELPERS
     # ---------------------------------------------------
     def human_like_delay(self, min_sec=2, max_sec=5):
         time.sleep(random.uniform(min_sec, max_sec))
 
     def check_captcha_safe(self):
         try:
-            # Check nhanh
             if 'geetest' in self.driver.page_source.lower():
                 self.wait_for_human()
                 return
-
             selectors = ["//div[@class='geetest_window']", "//div[contains(text(), 'xác minh')]"]
             for s in selectors:
-                elems = self.driver.find_elements(By.XPATH, s)
-                if elems and elems[0].is_displayed():
+                if self.driver.find_elements(By.XPATH, s):
                     self.wait_for_human()
                     return
         except: pass
 
     def wait_for_human(self):
-        print("\n" + "!"*60)
-        print("🚨 PHÁT HIỆN CAPTCHA! TẠM DỪNG.")
-        print("👉 Giải xong nhấn [ENTER] để chạy tiếp.")
-        print("👉 Nếu muốn DỪNG LUÔN, nhấn [Ctrl + C].")
-        print("!"*60)
+        print("\n" + "!"*50)
+        print("🚨 PHÁT HIỆN CAPTCHA! GIẢI XONG NHẤN ENTER.")
+        print("!"*50)
         sys.stdout.write('\a')
         sys.stdout.flush()
-        
-        # Chờ user nhấn Enter (hoặc Ctrl+C sẽ văng ra ngoài)
-        input("⌨️  Đang chờ bạn... ")
-        
-        print("✅ Tiếp tục...")
+        try: input("⌨️  Waiting... ")
+        except KeyboardInterrupt: raise KeyboardInterrupt 
         self.human_like_delay(3, 5)
 
-    # ---------------------------------------------------
-    # CORE CRAWL LOGIC
-    # ---------------------------------------------------
     def process_network_log(self, logs):
         extracted = []
         for entry in logs:
@@ -163,14 +152,24 @@ class ShopeeMassCrawler:
                             "variant": variant,
                             "timestamp": item.get('ctime', 0),
                             "date": datetime.fromtimestamp(item.get('ctime', 0)).strftime('%Y-%m-%d'),
-                            "keyword": self.current_keyword
+                            "keyword": self.current_keyword,
+                            "source_url": self.driver.current_url
                         })
             except: continue
         return extracted
 
+    # ---------------------------------------------------
+    # HÀM CRAWL 1 SẢN PHẨM (CÓ FIX LỖI TIMEOUT)
+    # ---------------------------------------------------
     def crawl_single_product(self, url):
         print(f"   📦 SP: {url[:60]}...")
-        self.driver.get(url)
+        
+        try:
+            self.driver.get(url)
+        except Exception:
+            print("      ➡️ Bỏ qua (Lỗi load trang).")
+            return
+
         self.human_like_delay(4, 6)
         self.check_captcha_safe()
 
@@ -186,47 +185,60 @@ class ShopeeMassCrawler:
             time.sleep(2)
         except: pass
         
-        product_reviews = []
         page = 1
+        count_total = 0
+        empty_page_count = 0 # Đếm số trang không có dữ liệu liên tiếp
         
-        # VÒNG LẶP VÉT CẠN (WHILE TRUE)
         while True:
-            # Giới hạn an toàn
+            # 1. Giới hạn cứng số trang
             if page > MAX_PAGES_PER_PROD:
-                print(f"      🛑 Đã đạt giới hạn {MAX_PAGES_PER_PROD} trang. Dừng SP này.")
+                print(f"      🛑 Dừng (Max {MAX_PAGES_PER_PROD} trang).")
                 break
 
-            # Scroll trigger API
+            # 2. Scroll trigger
             self.driver.execute_script("window.scrollBy(0, 1000);")
             time.sleep(1)
             self.driver.execute_script("window.scrollBy(0, 600);")
             self.human_like_delay(2, 4) 
             
+            # 3. Lấy dữ liệu
             logs = self.driver.get_log("performance")
             new_data = self.process_network_log(logs)
             
             if new_data:
-                product_reviews.extend(new_data)
-                # In dấu chấm để biết đang chạy
+                self.full_data.extend(new_data)
+                count_total += len(new_data)
+                empty_page_count = 0
                 print(".", end="", flush=True)
+            else:
+                empty_page_count += 1
+                if empty_page_count >= 3: 
+                    print(f"\n      🛑 Dừng (3 lần không thấy dữ liệu mới).")
+                    break
             
             self.check_captcha_safe()
-
-            # Thử click Next Page
             if not self.try_click_next_page():
                 print(f"\n      🛑 Hết trang (Page {page}).")
                 break
                 
-            self.human_like_delay(3, 5) # Chờ load trang mới
+            self.human_like_delay(3, 5)
             page += 1
         
-        print(f" Done ({len(product_reviews)} reviews)")
-        return product_reviews
+        print(f" Done (+{count_total} reviews)")
 
+    # ---------------------------------------------------
+    # TÌM KIẾM SẢN PHẨM
+    # ---------------------------------------------------
     def search_product_links(self, keyword):
-        print(f"\n🔎 Tìm Top 10 Bán Chạy: '{keyword}'...")
+        print(f"\n🔎 Tìm Top {MAX_PRODUCTS_PER_CAT} Bán Chạy: '{keyword}'...")
         url = f"https://shopee.vn/search?keyword={quote(keyword)}&sortBy=sales"
-        self.driver.get(url)
+        
+        try:
+            self.driver.get(url)
+        except Exception as e:
+            print(f"❌ Lỗi load trang tìm kiếm: {e}")
+            return []
+
         self.human_like_delay(5, 8)
         self.check_captcha_safe()
         
@@ -248,16 +260,16 @@ class ShopeeMassCrawler:
                 href = l.get_attribute("href")
                 if href and "-i." in href and len(href) > 40: links.append(href)
 
+        # [FIX] Đảm bảo chỉ lấy đúng số lượng đã config
         unique_links = list(set(links))[:MAX_PRODUCTS_PER_CAT]
         print(f"✅ Tìm thấy {len(unique_links)} sản phẩm.")
         return unique_links
 
     # ---------------------------------------------------
-    # HÀM CHẠY CHIẾN DỊCH (HỖ TRỢ CTRL+C)
+    # CHẠY CHIẾN DỊCH
     # ---------------------------------------------------
     def run_multi_campaign(self, categories):
         print(f"🚀 BẮT ĐẦU CHIẾN DỊCH: {len(categories)} DANH MỤC")
-        print("💡 MẸO: Nhấn 'Ctrl + C' để DỪNG và LƯU FILE ngay lập tức.")
         
         try:
             for idx, cat in enumerate(categories):
@@ -270,44 +282,43 @@ class ShopeeMassCrawler:
                 
                 if not links: continue
 
-                # Loop từng sản phẩm
                 for p_idx, link in enumerate(links):
                     print(f"\n🔸 [{p_idx+1}/{len(links)}] {cat}...")
                     
-                    reviews = self.crawl_single_product(link)
-                    self.full_data.extend(reviews)
+                    self.crawl_single_product(link)
                     
-                    # Nghỉ ngơi giữa các sản phẩm
                     self.human_like_delay(6, 10)
 
-                # SAU KHI XONG 1 DANH MỤC -> LƯU FILE NGAY
+                # Xong 1 danh mục -> Lưu file
                 self.save_current_batch()
-                
-                print("💤 Nghỉ giải lao 30s trước khi qua danh mục mới...")
+                print("💤 Nghỉ 30s...")
                 time.sleep(30)
 
         except KeyboardInterrupt:
             print("\n\n" + "!"*50)
-            print("🛑 NGƯỜI DÙNG ĐÃ DỪNG (Ctrl + C)!")
-            print("🛑 Đang tiến hành lưu dữ liệu còn trong bộ nhớ...")
+            print("🛑 NGƯỜI DÙNG DỪNG (Ctrl + C)!")
+            print("🛑 Đang lưu dữ liệu...")
             self.save_current_batch()
             print("!"*50)
 
     def close(self):
-        self.driver.quit()
+        try:
+            self.driver.quit()
+        except: pass
 
 # ---------------------------------------------------
-# DANH SÁCH MẶT HÀNG ĐỂ CRAWL
+# DANH SÁCH MẶT HÀNG HIGH-VALUE RESEARCH
 # ---------------------------------------------------
 SHOPPING_LIST = [
     # Công nghệ
-    "tai nghe bluetooth", "chuột không dây", "bàn phím cơ", "sạc dự phòng", 
-    # Thời trang
-    "áo thun nam", "váy nữ", "giày sneaker", 
+    "robot hút bụi lau nhà", "đồng hồ thông minh garmin", "bàn phím cơ custom", 
+    "tai nghe chống ồn", "camera wifi ngoài trời", "màn hình đồ họa",
     # Mỹ phẩm
-    "son môi", "kem chống nắng", "sữa rửa mặt", 
+    "serum vitamin c", "kem dưỡng retinol", "kem chống nắng cho da dầu", 
+    "nước tẩy trang cho da nhạy cảm",
     # Gia dụng
-    "bình giữ nhiệt", "nồi chiên không dầu", "gấu bông"
+    "máy lọc không khí", "máy tăm nước", "ghế công thái học", 
+    "bàn chải điện", "nồi chiên không dầu"
 ]
 
 if __name__ == "__main__":
@@ -315,6 +326,6 @@ if __name__ == "__main__":
     try:
         crawler.run_multi_campaign(SHOPPING_LIST)
     except Exception as e:
-        print(f"❌ Critical Error: {e}")
+        print(f"❌ Critical System Error: {e}")
     finally:
         crawler.close()
