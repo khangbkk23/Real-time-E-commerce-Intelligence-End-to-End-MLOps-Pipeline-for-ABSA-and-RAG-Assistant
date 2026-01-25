@@ -11,7 +11,7 @@ def create_profile():
     options = uc.ChromeOptions()
     options.add_argument(f"--user-data-dir={PROFILE_PATH}")
     
-    driver = uc.Chrome(options=options, headless=False, use_subprocess=True)
+    driver = uc.Chrome(options=options, headless=False, use_subprocess=True, version_main=144)
 
     print("Đang vào Shopee...")
     driver.get("https://shopee.vn/buyer/login")

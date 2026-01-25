@@ -29,48 +29,58 @@ class ShopeeMassCrawler:
         if headless:
             options.add_argument('--headless=new')
         
-        print("🚀 KHOỞI ĐỘNG CRAWLER (STABLE VERSION)...")
-        self.driver = uc.Chrome(options=options, headless=headless, use_subprocess=True)
+        print("KHỞI ĐỘNG CRAWLER (STABLE VERSION)...")
+        self.driver = uc.Chrome(options=options, headless=headless, use_subprocess=True, version_main=144)
         self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
-        # [FIX] Set timeout cho việc load trang (30 giây)
+        # Set timeout cho việc load trang (30 giây)
         self.driver.set_page_load_timeout(30)
         
         self.full_data = [] 
         self.current_keyword = ""
+        self.seen_reviews = set()
 
-    # ---------------------------------------------------
-    # HÀM CLICK NEXT PAGE
-    # ---------------------------------------------------
     def try_click_next_page(self):
+        print("      ➡️ Đang thử bấm Next Page...", end=" ")
         try:
-            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight - 1200);")
+            self.driver.execute_script("window.scrollBy(0, 600);")
             time.sleep(1)
-            
-            next_active_xpath = "//button[contains(@class, 'shopee-icon-button--right') and not(contains(@class, 'disabled'))]"
-            next_disabled_xpath = "//button[contains(@class, 'shopee-icon-button--right') and contains(@class, 'disabled')]"
+            next_button_selectors = [
+                "//button[contains(@class, 'shopee-icon-button--right')]",
+                "//button[contains(@class, 'shopee-icon-button') and .//*[name()='svg' and contains(@class, 'icon-arrow-right')]]",
+                "//div[@class='shopee-page-controller']//button[last()]"
+            ]
 
-            if self.driver.find_elements(By.XPATH, next_disabled_xpath):
-                print("Nút Next bị khóa (Đã hết trang).")
-                return False
-
-            # Tìm nút Next đang hoạt động
-            btns = self.driver.find_elements(By.XPATH, next_active_xpath)
             target_btn = None
             
-            for btn in btns:
-                if btn.is_displayed() and btn.is_enabled():
-                    target_btn = btn
-                    break
-            
+            for xpath in next_button_selectors:
+                try:
+                    btns = self.driver.find_elements(By.XPATH, xpath)
+                    for btn in btns:
+                        class_attr = btn.get_attribute("class") or ""
+                        disabled_attr = btn.get_attribute("disabled")
+                        
+                        if "disabled" in class_attr or disabled_attr is not None:
+                            continue
+                        
+                        if btn.is_displayed():
+                            target_btn = btn
+                            break
+                    if target_btn: break
+                except: continue
+
             if target_btn:
+                # 3. Click bằng JavaScript (Mạnh hơn click thường)
                 self.driver.execute_script("arguments[0].click();", target_btn)
+                print("✅ Click thành công!")
+                time.sleep(3) # Chờ trang mới load
                 return True
-            
-            return False
+            else:
+                print("Không tìm thấy nút Next (Hoặc đã hết trang).")
+                return False
 
         except Exception as e:
-            # print(f"Debug Next Error: {e}")
+            print(f"Lỗi Next Page: {e}")
             return False
 
     def save_current_batch(self):
@@ -167,6 +177,68 @@ class ShopeeMassCrawler:
     # ---------------------------------------------------
     # HÀM CRAWL 1 SẢN PHẨM (CÓ FIX LỖI TIMEOUT)
     # ---------------------------------------------------
+    # def crawl_single_product(self, url):
+    #     print(f"   📦 SP: {url[:60]}...")
+        
+    #     try:
+    #         self.driver.get(url)
+    #     except Exception:
+    #         print("      ➡️ Bỏ qua (Lỗi load trang).")
+    #         return
+
+    #     self.human_like_delay(4, 6)
+    #     self.check_captcha_safe()
+    #     self.driver.execute_script("window.scrollBy(0, 500);")
+    #     try:
+    #         self.driver.execute_script("""
+    #             let tabs = document.querySelectorAll("div");
+    #             for (let t of tabs) {
+    #                 if(t.innerText.includes("Đánh Giá") && t.innerText.length < 20) { t.click(); break; }
+    #             }
+    #         """)
+    #         time.sleep(2)
+    #     except: pass
+        
+    #     page = 1
+    #     count_total = 0
+    #     empty_page_count = 0
+        
+    #     while True:
+    #         if page > MAX_PAGES_PER_PROD:
+    #             print(f"Dừng (Max {MAX_PAGES_PER_PROD} trang).")
+    #             break
+
+    #         # 2. Scroll trigger
+    #         self.driver.execute_script("window.scrollBy(0, 1000);")
+    #         time.sleep(1)
+    #         self.driver.execute_script("window.scrollBy(0, 600);")
+    #         self.human_like_delay(2, 4) 
+            
+    #         # 3. Lấy dữ liệu
+    #         logs = self.driver.get_log("performance")
+    #         new_data = self.process_network_log(logs)
+            
+    #         if new_data:
+    #             self.full_data.extend(new_data)
+    #             count_total += len(new_data)
+    #             empty_page_count = 0
+    #             print(".", end="", flush=True)
+    #         else:
+    #             empty_page_count += 1
+    #             if empty_page_count >= 3: 
+    #                 print(f"\n      🛑 Dừng (3 lần không thấy dữ liệu mới).")
+    #                 break
+            
+    #         self.check_captcha_safe()
+    #         if not self.try_click_next_page():
+    #             print(f"\n      🛑 Hết trang (Page {page}).")
+    #             break
+                
+    #         self.human_like_delay(3, 5)
+    #         page += 1
+        
+    #     print(f" Done (+{count_total} reviews)")
+    
     def crawl_single_product(self, url):
         print(f"   📦 SP: {url[:60]}...")
         
@@ -178,62 +250,123 @@ class ShopeeMassCrawler:
 
         self.human_like_delay(4, 6)
         self.check_captcha_safe()
+
+        # 1. Click Tab "Đánh Giá"
         self.driver.execute_script("window.scrollBy(0, 500);")
         try:
             self.driver.execute_script("""
                 let tabs = document.querySelectorAll("div");
                 for (let t of tabs) {
-                    if(t.innerText.includes("Đánh Giá") && t.innerText.length < 20) { t.click(); break; }
+                    if(t.innerText.includes("Đánh Giá") && t.innerText.length < 30) { t.click(); break; }
                 }
             """)
             time.sleep(2)
         except: pass
-        
-        page = 1
-        count_total = 0
-        empty_page_count = 0
-        
-        while True:
-            if page > MAX_PAGES_PER_PROD:
-                print(f"Dừng (Max {MAX_PAGES_PER_PROD} trang).")
-                break
 
-            # 2. Scroll trigger
-            self.driver.execute_script("window.scrollBy(0, 1000);")
-            time.sleep(1)
-            self.driver.execute_script("window.scrollBy(0, 600);")
-            self.human_like_delay(2, 4) 
-            
-            # 3. Lấy dữ liệu
-            logs = self.driver.get_log("performance")
-            new_data = self.process_network_log(logs)
-            
-            if new_data:
-                self.full_data.extend(new_data)
-                count_total += len(new_data)
-                empty_page_count = 0
-                print(".", end="", flush=True)
-            else:
-                empty_page_count += 1
-                if empty_page_count >= 3: 
-                    print(f"\n      🛑 Dừng (3 lần không thấy dữ liệu mới).")
-                    break
-            
-            self.check_captcha_safe()
-            if not self.try_click_next_page():
-                print(f"\n      🛑 Hết trang (Page {page}).")
-                break
-                
-            self.human_like_delay(3, 5)
-            page += 1
+        # 2. Định nghĩa mục tiêu
+        target_filters = ["1 sao", "2 sao", "3 sao"] 
         
-        print(f" Done (+{count_total} reviews)")
+        # 3. Duyệt qua từng bộ lọc
+        for target_name in target_filters:
+            print(f"\n      🎯 Check filter: [{target_name.upper()}]...", end=" ")
+            
+            target_btn = None
+            try:
+                # Tìm lại elements mỗi vòng lặp
+                current_filters = self.driver.find_elements(By.CSS_SELECTOR, "div[class*='product-rating-overview__filter']")
+                
+                # Fallback nếu selector trên không thấy
+                if not current_filters:
+                     current_filters = self.driver.find_elements(By.CSS_SELECTOR, ".product-rating-overview div")
+
+                for btn in current_filters:
+                    btn_text = btn.text.lower()
+                    
+                    if target_name in btn_text:
+                        # [BẢO VỆ 1: NÉ NÚT RỖNG]
+                        # Nếu nút chứa "(0)" hoặc kết thúc bằng "(0)" -> Bỏ qua
+                        if "(0)" in btn_text or btn_text.strip().endswith("(0)"):
+                            print(f"-> Trống (0 review). Skip.", end="")
+                            target_btn = None
+                        else:
+                            target_btn = btn
+                        break
+            except: pass
+
+            if target_btn:
+                # Click nút
+                self.driver.execute_script("arguments[0].click();", target_btn)
+                print("✅ Click!", end=" ")
+                time.sleep(3)
+                
+                self.driver.get_log("performance") 
+            else:
+                print("❌ Next.")
+                continue 
+
+            # ---------------------------------------------------------
+            # BẮT ĐẦU CRAWL DATA CỦA FILTER HIỆN TẠI
+            # ---------------------------------------------------------
+            page = 1
+            empty_count = 0
+            count_filter = 0
+            
+            while True:
+                if page > 10: break # Giới hạn 10 trang cho 1 sao
+
+                self.driver.execute_script("window.scrollBy(0, 1000);")
+                time.sleep(1)
+                self.driver.execute_script("window.scrollBy(0, 600);")
+                self.human_like_delay(2, 3) 
+                
+                logs = self.driver.get_log("performance")
+                new_data = self.process_network_log(logs)
+                
+                if new_data:
+                    unique_batch = []
+                    for item in new_data:
+                        # [BẢO VỆ 3: LỌC CỨNG (HARD FILTER)]
+                        # Đây là chốt chặn cuối cùng. Nếu rating > 3 -> VỨT NGAY.
+                        current_rating = item.get('rating', 5)
+                        if current_rating > 3:
+                            continue
+
+                        # Logic chống trùng lặp
+                        review_id = f"{item['username']}_{item['timestamp']}"
+                        
+                        if review_id not in self.seen_reviews:
+                            self.seen_reviews.add(review_id)
+                            item['source_url'] = url 
+                            unique_batch.append(item)
+                    
+                    if unique_batch:
+                        self.full_data.extend(unique_batch)
+                        count_filter += len(unique_batch)
+                        empty_count = 0
+                        print(f"+{len(unique_batch)}", end=" ", flush=True)
+                    else:
+                        empty_count += 1
+                else:
+                    empty_count += 1
+
+                if empty_count >= 2: break 
+
+                self.check_captcha_safe()
+                if not self.try_click_next_page(): break
+                    
+                page += 1
+            
+            print(f" -> Xong (+{count_filter} reviews)")
+        
+        print("Hoàn thành sản phẩm.")
 
     # ---------------------------------------------------
-    # TÌM KIẾM SẢN PHẨM
+    # HÀM TÌM KIẾM (PHIÊN BẢN LẤY TỪ ĐẦU - GIỮ NGUYÊN THỨ TỰ)
     # ---------------------------------------------------
     def search_product_links(self, keyword):
-        print(f"\n🔎 Tìm Top {MAX_PRODUCTS_PER_CAT} Bán Chạy: '{keyword}'...")
+        print(f"\n🔎 Tìm Top {MAX_PRODUCTS_PER_CAT} Bán Chạy Nhất: '{keyword}'...")
+        
+        # Sắp xếp theo Bán Chạy (Sales)
         url = f"https://shopee.vn/search?keyword={quote(keyword)}&sortBy=sales"
         
         try:
@@ -244,29 +377,37 @@ class ShopeeMassCrawler:
 
         self.human_like_delay(5, 8)
         self.check_captcha_safe()
-        
-        for i in range(4):
-            self.driver.execute_script(f"window.scrollBy(0, 1200);")
-            self.human_like_delay(1, 2)
+
+        for i in range(5):
+            self.driver.execute_script(f"window.scrollBy(0, 1000);")
+            time.sleep(1) # Chờ 1 chút cho hình ảnh/link hiện ra
         
         links = []
         try:
             elements = self.driver.find_elements(By.CSS_SELECTOR, "a[data-sqe='link']")
+            
             for elem in elements:
                 href = elem.get_attribute("href")
-                if href and "-i." in href: links.append(href)
+                if href and "-i." in href: # Link sản phẩm shopee luôn có chuỗi "-i." chứa shopid và itemid
+                    links.append(href)
         except: pass
-        
         if not links:
+            print("⚠️ Selector chính không thấy, dùng Fallback...")
             raw_links = self.driver.find_elements(By.TAG_NAME, "a")
             for l in raw_links:
                 href = l.get_attribute("href")
-                if href and "-i." in href and len(href) > 40: links.append(href)
+                if href and "-i." in href and len(href) > 40: 
+                    links.append(href)
+        seen = set()
+        ordered_links = []
+        for l in links:
+            if l not in seen:
+                ordered_links.append(l)
+                seen.add(l)
+        final_links = ordered_links[:MAX_PRODUCTS_PER_CAT]
 
-        # [FIX] Đảm bảo chỉ lấy đúng số lượng đã config
-        unique_links = list(set(links))[:MAX_PRODUCTS_PER_CAT]
-        print(f"✅ Tìm thấy {len(unique_links)} sản phẩm.")
-        return unique_links
+        print(f"✅ Đã chọn {len(final_links)} sản phẩm (Top Sales).")
+        return final_links
 
 
     def run_multi_campaign(self, categories):
@@ -308,20 +449,12 @@ class ShopeeMassCrawler:
 
 SHOPPING_LIST = [
     # Công nghệ
-    # "robot hút bụi lau nhà", 
-    # "đồng hồ thông minh thể thao",
-    # "bàn phím cơ custom", 
-    # "tai nghe chống ồn",
-    # "camera wifi ngoài trời",
-    "màn hình chuyên đồ hoạ",
-    # # Mỹ phẩm
-    # "serum vitamin c",
-    # "kem dưỡng retinol",
-    # "kem chống nắng cho da dầu", 
-    # "nước tẩy trang cho da nhạy cảm",
-    # # Gia dụng
-    # "máy lọc không khí", "máy tăm nước", "ghế công thái học", 
-    # "bàn chải điện", "nồi chiên không dầu"
+    "robot hút bụi mini", 
+    "đồng hồ thông minh thể thao 99k",
+    "bàn phím cơ giá rẻ", 
+    "tai nghe chống ồn giá rẻ",
+    "camera wifi giá rẻ",
+    "màn hình giá rẻ",
 ]
 
 if __name__ == "__main__":
