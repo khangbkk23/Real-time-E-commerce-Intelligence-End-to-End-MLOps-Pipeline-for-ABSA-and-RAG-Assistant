@@ -6,3 +6,4 @@ underthesea
 emoji
 imbalanced-learn
 pyyaml
+imblearn

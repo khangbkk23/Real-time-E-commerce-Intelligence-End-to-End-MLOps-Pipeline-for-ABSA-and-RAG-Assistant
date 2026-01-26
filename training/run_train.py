@@ -2,10 +2,14 @@ import pandas as pd
 import torch
 import numpy as np
 import random
-import os
+import os, sys
 from torch.utils.data import DataLoader, Dataset
 from sklearn.model_selection import train_test_split
 from imblearn.over_sampling import RandomOverSampler 
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.append(parent_dir)
 
 from models.PhoBERT import PhoBERTSentiment, PhoBERTTokenizer
 from training.trainer import PhoBERTTrainer

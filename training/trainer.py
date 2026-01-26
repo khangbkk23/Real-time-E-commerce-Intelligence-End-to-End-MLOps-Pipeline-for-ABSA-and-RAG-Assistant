@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 from transformers import get_cosine_schedule_with_warmup
 import numpy as np
 import os
@@ -22,7 +22,7 @@ class PhoBERTTrainer:
         os.makedirs(output_dir, exist_ok=True)
         
         self.use_amp = self.device == "cuda"
-        self.scaler = GradScaler() if self.use_amp else None
+        self.scaler = GradScaler('cuda') if self.use_amp else None
         
         self.history = {
             'train_loss': [],
@@ -106,7 +106,7 @@ class PhoBERTTrainer:
                 optimizer.zero_grad()
                 
                 if self.use_amp:
-                    with autocast():
+                    with autocast('cuda'):
                         outputs = self.model(
                             input_ids=input_ids,
                             attention_mask=attention_mask,
